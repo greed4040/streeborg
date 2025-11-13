@@ -7,9 +7,9 @@ compression.py - Функция сжатия ГОСТ 34.11-2018
 - g: функция сжатия g_N(h, m)
 """
 
-from .constants import C_CONSTANTS
-from .primitives import LPS, X
-from .utils import xor_bytes
+from constants import C_CONSTANTS
+from primitives import LPS, X
+from utils import xor_bytes
 
 
 # ============================================================================
@@ -59,43 +59,30 @@ def E(K0: bytes, m: bytes) -> bytes:
     """
     Функция шифрования E: V₅₁₂ × V₅₁₂ → V₅₁₂.
     
-    Структура:
-    1. Генерация ключей K₁...K₁₃ из K₀
-    2. Whitening: t := X[K₁](m)
-    3. 12 LPS-раундов: t := LPS(X[K_{i+1}](t)) для i = 1...12
-    4. Финальный XOR: результат = X[K₁₃](t)
-    
-    Эквивалентно:
+    Структура (справа налево):
     E(K₀, m) = X[K₁₃] ∘ LPS ∘ X[K₁₂] ∘ ... ∘ LPS ∘ X[K₂] ∘ LPS ∘ X[K₁](m)
     
-    Args:
-        K0: Начальный ключ (64 байта)
-        m: Блок сообщения (64 байта)
-        
-    Returns:
-        Результат шифрования (64 байта)
-        
-    Note:
-        Всего 13 применений X и 12 применений LPS.
+    Итого:
+    - 13 применений X (с ключами K₁...K₁₃)
+    - 12 применений LPS (после K₁...K₁₂, но НЕ после K₁₃)
     """
     assert len(K0) == 64, f"E: K0 должен быть 64 байта, получено {len(K0)}"
     assert len(m) == 64, f"E: сообщение должно быть 64 байта, получено {len(m)}"
     
-    # Генерируем раундовые ключи
+    # Генерируем раундовые ключи K₁...K₁₃
     keys = key_schedule(K0)
     
-    # Whitening (раунд 0)
-    state = X(keys[0], m)  # X[K₁](m)
+    state = m
     
-    # 12 LPS-раундов
-    for i in range(1, 13):
-        state = LPS(X(keys[i], state))  # LPS(X[K_{i+1}](state))
+    # Первые 12 раундов: X[K_i] → LPS
+    for i in range(12):  # i = 0..11 → keys[0..11] = K₁..K₁₂
+        state = X(keys[i], state)
+        state = LPS(state)
     
-    # Финальный результат уже получен после последнего LPS
-    # (в последнем раунде LPS применяется внутри цикла)
+    # Последний раунд: только X[K₁₃], БЕЗ LPS!
+    state = X(keys[12], state)
     
     return state
-
 
 # ============================================================================
 # ФУНКЦИЯ СЖАТИЯ g

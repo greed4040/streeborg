@@ -6,9 +6,9 @@ streebog.py - Основной алгоритм ГОСТ 34.11-2018 (Стриб�
 """
 
 from typing import Optional
-from .constants import IV_512, IV_256
-from .compression import g
-from .utils import (
+from constants import IV_512, IV_256
+from compression import g
+from utils import (
     add_mod_2n_512,
     chunk_64,
     pad_last_block,
@@ -117,58 +117,27 @@ class Streebog:
     
     
     def final(self) -> bytes:
-        """
-        Финализирует хэш и возвращает результат.
-        
-        Выполняет Этап 3 стандарта:
-        1. Padding последнего блока
-        2. Обработка блока с N
-        3. Обработка блока с Σ
-        4. Усечение до 256 бит (если требуется)
-        
-        Returns:
-            Хэш-код (32 или 64 байта)
-            
-        Note:
-            После вызова final() объект нельзя использовать повторно.
-        """
         if self._finalized:
             raise RuntimeError("final() уже был вызван")
-        
         self._finalized = True
-        
-        # ===== ЭТАП 3.1: Обработка последнего блока =====
-        
-        # Если буфер пустой — паддим пустой блок
-        if len(self.buffer) == 0:
-            last_block = pad_last_block(b'')
-        else:
-            # Паддим то, что есть в буфере
-            last_block = pad_last_block(bytes(self.buffer))
-        
-        # Обновляем N с учётом длины последнего блока (ДО паддинга)
-        last_len_bits = len(self.buffer) * 8
-        self.N = add_mod_2n_512(self.N, int_to_bytes(last_len_bits, 64))
-        
-        # Обновляем Σ
-        self.Sigma = add_mod_2n_512(self.Sigma, last_block)
-        
-        # Применяем функцию сжатия
-        self.h = g(self.N, self.h, last_block)
-        
-        # ===== ЭТАП 3.2: Блок с N =====
-        self.h = g(bytes(64), self.h, self.N)  # g_0(h, N)
-        
-        # ===== ЭТАП 3.3: Блок с Σ =====
-        self.h = g(bytes(64), self.h, self.Sigma)  # g_0(h, Σ)
-        
-        # ===== ЭТАП 3.4: Усечение для 256-бит =====
-        if self.out_bits == 256:
-            # Берём старшие 256 бит (первые 32 байта)
-            return self.h[:32]
-        else:
-            return self.h
 
+        # 1) Подготовка последнего блока
+        last_len_bits = len(self.buffer) * 8
+        last_block = pad_last_block(bytes(self.buffer))  # паддинг сообщения
+
+        # 2) g_N(h, m) ДОЛЖЕН использовать текущий N (до инкремента!)
+        self.h = g(self.N, self.h, last_block)
+
+        # 3) Обновить N и Σ ПОСЛЕ g_N, как в RFC
+        self.N = add_mod_2n_512(self.N, int_to_bytes(last_len_bits, 64))
+        self.Sigma = add_mod_2n_512(self.Sigma, last_block)
+
+        # 4) g_0(h, N) и g_0(h, Σ)
+        self.h = g(bytes(64), self.h, self.N)
+        self.h = g(bytes(64), self.h, self.Sigma)
+
+        # 5) Усечение для 256 бит
+        return self.h[:32] if self.out_bits == 256 else self.h
 
 # ============================================================================
 # ФУНКЦИИ-ОБЁРТКИ

@@ -111,7 +111,6 @@ def chunk_64(data: bytes) -> Iterator[bytes]:
 # ПАДДИНГ
 # ============================================================================
 
-def pad_last_block(block: bytes) -> bytes:
     """
     Дополняет последний неполный блок до 512 бит по правилам ГОСТ.
     
@@ -131,12 +130,32 @@ def pad_last_block(block: bytes) -> bytes:
         >>> pad_last_block(b'ABC')
         b'ABC\\x01' + b'\\x00' * 60
     """
-    if len(block) >= 64:
-        raise ValueError(f"Блок должен быть < 64 байт, получено {len(block)}")
-    
-    # Добавляем байт 0x01, затем дополняем нулями до 64 байт
-    padding_length = 64 - len(block) - 1
-    return block + b'\x01' + (b'\x00' * padding_length)
+    """Левый паддинг до 512 бит: 0^(511-|M|) || 1 || M"""
+
+    """
+    Левый паддинг до 512 бит по ГОСТ 34.11-2012/2018:
+    m = 0^(511 - |M|) || 1 || M, где |M| — длина последнего фрагмента в битах (<512).
+    """
+def pad_last_block(data: bytes) -> bytes:
+    """
+    Левый паддинг до 512 бит по ГОСТ 34.11-2012/2018:
+    m = 0^(511 - |M|) || 1 || M, где |M| — длина data в битах (<512).
+    Результат всегда 64 байта.
+    """
+    bitlen = len(data) * 8
+    if not (0 <= bitlen < 512):
+        raise ValueError("Длина последнего фрагмента должна быть < 512 бит")
+
+    pad_bits = 512 - bitlen - 1
+    full_zero_bytes, rem_zero_bits = divmod(pad_bits, 8)
+
+    out = bytearray()
+    out.extend(b"\x00" * full_zero_bytes)
+    # Позиция '1' в байте: если осталось r нулевых бит до '1', то бит = 1 << (7 - r)
+    out.append(1 << (7 - rem_zero_bits))
+    out.extend(data)
+    return bytes(out)
+
 
 
 # ============================================================================

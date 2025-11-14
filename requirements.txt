@@ -1,0 +1,6 @@
+# GOST R 34.11-2018 (Streebog) - Runtime Dependencies
+#
+# This implementation has NO external dependencies.
+# Pure Python 3.7+ implementation.
+#
+# For development dependencies, see requirements-dev.txt
